@@ -3,7 +3,8 @@ package org.trustedanalytics.sparktk.saveload
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SQLContext
 import org.json4s.JsonAST.JValue
-import org.json4s.{ Extraction, DefaultFormats }
+import org.json4s.jackson.Serialization
+import org.json4s.{ NoTypeHints, Extraction, DefaultFormats }
 import org.json4s.jackson.JsonMethods._
 import org.json4s.JsonDSL._
 
@@ -41,5 +42,17 @@ object SaveLoad {
     val formatVersion = (contents \ "version").extract[Int]
     val dataJValue: JValue = contents \ "data"
     (formatId, formatVersion, dataJValue)
+  }
+
+  /**
+   * Helper method to extract/create the scala object from out of the JValue
+   * @param sourceJValue AST JValue representing T
+   * @param t implicit reflection jazz
+   * @tparam T the type to extract
+   * @return new instance of T
+   */
+  def extractFromJValue[T <: Product](sourceJValue: JValue)(implicit t: Manifest[T]): T = {
+    implicit val formats = Serialization.formats(NoTypeHints)
+    sourceJValue.extract[T]
   }
 }

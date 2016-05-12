@@ -60,6 +60,8 @@ class TkContext(object):
         """
         name_parts = scala_obj.getClass().getName().split('.')
         relevant_path = ".".join(name_parts[name_parts.index('sparktk')+1:])
+        if relevant_path == "frame.Frame":
+            return self.to_frame(scala_obj)
         cmd = "tc.%s.load(tc, scala_obj)" % relevant_path
         print "cmd=%s" % cmd
         proxy = eval(cmd, {"tc": self, "scala_obj": scala_obj})

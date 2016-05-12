@@ -4,7 +4,7 @@ import org.apache.spark.SparkContext
 import org.json4s.JsonAST.JValue
 
 /**
- * Trait for companion objects of classes that want to play in the SaveLoad methodology
+ * Trait for companion objects of classes that want to work with the SaveLoad methodology
  */
 trait TkSaveableObject {
   /**

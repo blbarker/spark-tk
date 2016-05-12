@@ -115,7 +115,7 @@ def test_save_load(tc):
                          [("data", float),("name", str)])
     frame1_inspect = frame1.inspect()
     frame1.save(path)
-    frame2 = tc.load_frame(path)
+    frame2 = tc.load(path)
     frame2_inspect = frame2.inspect()
     assert(frame1_inspect, frame2_inspect)
     assert(str(frame1.schema), str(frame2.schema))

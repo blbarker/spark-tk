@@ -7,7 +7,7 @@ import org.apache.spark.sql.Row
 import org.trustedanalytics.sparktk.frame.internal.RowWrapper
 import org.trustedanalytics.sparktk.frame.internal.rdd.{ VectorUtils, FrameRdd, RowWrapperFunctions }
 import org.trustedanalytics.sparktk.frame._
-import org.trustedanalytics.sparktk.saveload.{ TkSaveLoad, TkSaveableObject }
+import org.trustedanalytics.sparktk.saveload.{ SaveLoad, TkSaveLoad, TkSaveableObject }
 
 import scala.language.implicitConversions
 import org.json4s.JsonAST.JValue
@@ -69,44 +69,10 @@ object KMeansModel extends TkSaveableObject {
   def load(sc: SparkContext, path: String, formatVersion: Int, tkMetadata: JValue): Any = {
 
     validateFormatVersion(formatVersion, 1)
-    val m: KMeansModelTkMetaData = TkSaveLoad.extract[KMeansModelTkMetaData](tkMetadata)
+    val m: KMeansModelTkMetaData = SaveLoad.extractFromJValue[KMeansModelTkMetaData](tkMetadata)
     val sparkModel = SparkKMeansModel.load(sc, path)
 
     KMeansModel(m.columns, m.k, m.scalings, m.maxIterations, m.epsilon, m.initializationMode, m.seed, sparkModel)
-  }
-}
-
-///**
-// * @param k Desired number of clusters
-// * @param scalings Optional scaling values, each is multiplied by the corresponding value in the observation column
-// * @param maxIterations Number of iteration for which the algorithm should run
-// * @param epsilon Distance threshold within which we consider k-means to have converged. Default is 1e-4. If all
-// *                centers move less than this Euclidean distance, we stop iterating one run
-// * @param initializationMode The initialization technique for the algorithm.  It could be either "random" to
-// *                           choose random points as initial clusters, or "k-means||" to use a parallel variant
-// *                           of k-means++.  Default is "k-means||"
-// * @param centroids An array of length k containing the centroid of each cluster
-// */
-
-case class KMeansModelTkMetaData(columns: Seq[String],
-                                 k: Int,
-                                 scalings: Option[Seq[Double]],
-                                 maxIterations: Int,
-                                 epsilon: Double,
-                                 initializationMode: String,
-                                 seed: Option[Long] = None) extends Serializable
-
-case class KMeansModel private[kmeans] (columns: Seq[String],
-                                        k: Int,
-                                        scalings: Option[Seq[Double]],
-                                        maxIterations: Int,
-                                        epsilon: Double,
-                                        initializationMode: String,
-                                        seed: Option[Long] = None,
-                                        sparkModel: SparkKMeansModel) extends Serializable {
-
-  implicit def rowWrapperToRowWrapperFunctions(rowWrapper: RowWrapper): RowWrapperFunctions = {
-    new RowWrapperFunctions(rowWrapper)
   }
 
   /**
@@ -114,7 +80,7 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
    * @param observationColumns The columns which hold the observations
    * @return
    */
-  private def getDenseVectorMaker(observationColumns: Seq[String]): RowWrapper => MllibVector = {
+  private[kmeans] def getDenseVectorMaker(observationColumns: Seq[String], scalings: Option[Seq[Double]]): RowWrapper => MllibVector = {
 
     def getDenseVector(columnNames: Seq[String])(row: RowWrapper): MllibVector = {
       row.toDenseVector(columnNames)
@@ -130,6 +96,34 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
         require(weights.length == observationColumns.length)
         getWeightedDenseVector(observationColumns, weights.toArray)
     }
+  }
+}
+
+/**
+ * KMeansModel
+ * @param columns The names of the columns trained on
+ * @param k Desired number of clusters
+ * @param scalings Optional scaling values, each is multiplied by the corresponding value in the observation column
+ * @param maxIterations Number of iterations for which the algorithm should run
+ * @param epsilon Distance threshold within which we consider k-means to have converged. Default is 1e-4. If all
+ *                centers move less than this Euclidean distance, we stop iterating one run
+ * @param initializationMode The initialization technique for the algorithm.  It could be either "random" to
+ *                           choose random points as initial clusters, or "k-means||" to use a parallel variant
+ *                           of k-means++.  Default is "k-means||"
+ * @param seed Optional seed value to control the algorithm randomness
+ * @param sparkModel SparkModel created from the training process
+ */
+case class KMeansModel private[kmeans] (columns: Seq[String],
+                                        k: Int,
+                                        scalings: Option[Seq[Double]],
+                                        maxIterations: Int,
+                                        epsilon: Double,
+                                        initializationMode: String,
+                                        seed: Option[Long] = None,
+                                        sparkModel: SparkKMeansModel) extends Serializable {
+
+  implicit def rowWrapperToRowWrapperFunctions(rowWrapper: RowWrapper): RowWrapperFunctions = {
+    new RowWrapperFunctions(rowWrapper)
   }
 
   def centroids: Array[MllibVector] = sparkModel.clusterCenters
@@ -147,13 +141,13 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
     if (observationColumns.isDefined) {
       require(columns.length == observationColumns.get.length, "Number of columns for train and predict should be same")
     }
-    val vectorMaker = getDenseVectorMaker(observationColumns.getOrElse(columns))
+    val vectorMaker = KMeansModel.getDenseVectorMaker(observationColumns.getOrElse(columns), scalings)
     val frameRdd = new FrameRdd(frame.schema, frame.rdd)
     val predictRDD = frameRdd.mapRows(row => {
       val point = vectorMaker(row)
       sparkModel.predict(point)
     })
-    val clusterSizes = predictRDD.map(row => (row.toString, 1)).reduceByKey(_ + _).collect().map { case (k, v) => v }
+    val clusterSizes = predictRDD.map(row => (row.toString, 1)).reduceByKey(_ + _).collect().map { case (_, v) => v }
     clusterSizes
   }
 
@@ -185,7 +179,7 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
       require(columns.length == observationColumns.get.length, "Number of columns for train and predict should be same")
     }
 
-    val vectorMaker = getDenseVectorMaker(observationColumns.getOrElse(columns))
+    val vectorMaker = KMeansModel.getDenseVectorMaker(observationColumns.getOrElse(columns), scalings)
     val distanceMapper: RowWrapper => Row = row => {
       val point = vectorMaker(row)
       val clusterCenters = sparkModel.clusterCenters
@@ -212,7 +206,7 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
       require(columns.length == observationColumns.get.length, "Number of columns for train and predict should be same")
     }
 
-    val vectorMaker = getDenseVectorMaker(observationColumns.getOrElse(columns))
+    val vectorMaker = KMeansModel.getDenseVectorMaker(observationColumns.getOrElse(columns), scalings)
     val predictMapper: RowWrapper => Row = row => {
       val point = vectorMaker(row)
       val prediction = sparkModel.predict(point)
@@ -234,3 +228,27 @@ case class KMeansModel private[kmeans] (columns: Seq[String],
     TkSaveLoad.saveTk(sc, path, KMeansModel.formatId, formatVersion, tkMetadata)
   }
 }
+
+/**
+ * TK Metadata that will be stored as part of the model
+ * @param columns The names of the columns trained on
+ * @param k Desired number of clusters
+ * @param scalings Optional scaling values, each is multiplied by the corresponding value in the observation column
+ * @param maxIterations Number of iterations for which the algorithm should run
+ * @param epsilon Distance threshold within which we consider k-means to have converged. Default is 1e-4. If all
+ *                centers move less than this Euclidean distance, we stop iterating one run
+ * @param initializationMode The initialization technique for the algorithm.  It could be either "random" to
+ *                           choose random points as initial clusters, or "k-means||" to use a parallel variant
+ *                           of k-means++.  Default is "k-means||"
+ * @param seed Optional seed value to control the algorithm randomness
+ */
+case class KMeansModelTkMetaData(columns: Seq[String],
+                                 k: Int,
+                                 scalings: Option[Seq[Double]],
+                                 maxIterations: Int,
+                                 epsilon: Double,
+                                 initializationMode: String,
+                                 seed: Option[Long] = None) extends Serializable
+
+// todo: blbarker - create macros to enable us to compose case classes, such that we can remove this boilerplate copy going on with
+// train args, the model, the model tkmetadata, in addition to the scaladoc redundancy (not to mention python!)

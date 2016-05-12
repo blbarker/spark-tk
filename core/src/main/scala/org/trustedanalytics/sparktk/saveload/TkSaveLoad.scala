@@ -3,8 +3,6 @@ package org.trustedanalytics.sparktk.saveload
 import org.apache.hadoop.fs.Path
 import org.apache.spark.SparkContext
 import org.json4s.JsonAST.JValue
-import org.json4s.NoTypeHints
-import org.json4s.jackson.Serialization
 
 /**
  * Library to save/load json metadata in a tk/ subfolder
@@ -38,10 +36,8 @@ object TkSaveLoad {
     SaveLoad.save(sc, tkMetadataPath(path), formatId, formatVersion, tkMetadata)
   }
 
+  /**
+   * Adds the tk/ folder onto the given path
+   */
   def tkMetadataPath(path: String): String = new Path(path, "tk").toUri.toString
-
-  def extract[T <: Product](tkMetaJson: JValue)(implicit t: Manifest[T]): T = {
-    implicit val formats = Serialization.formats(NoTypeHints)
-    tkMetaJson.extract[T]
-  }
 }
