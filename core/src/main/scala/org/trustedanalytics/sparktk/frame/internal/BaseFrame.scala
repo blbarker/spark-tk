@@ -18,7 +18,7 @@ trait BaseFrame {
    */
   def schema: Schema = if (frameState != null) frameState.schema else null
 
-  protected def init(rdd: RDD[Row], schema: Schema): Unit = {
+  private[sparktk] def init(rdd: RDD[Row], schema: Schema): Unit = {
     frameState = FrameState(rdd, schema)
   }
 

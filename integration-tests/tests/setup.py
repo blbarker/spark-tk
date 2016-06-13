@@ -22,11 +22,13 @@ def tc(request):
         if global_tc is None:
             from sparktk import TkContext
             from sparktk import create_sc
+            from sparktk.tests import utils
             #from sparktk.loggers import loggers
             #loggers.set("d", "sparktk.sparkconf")
             sc = create_sc(master='local[2]', app_name="pytest-pyspark-local-testing")
             request.addfinalizer(lambda: sc.stop())
             global_tc = TkContext(sc)
+            global_tc.testing = utils
     return global_tc
 
 

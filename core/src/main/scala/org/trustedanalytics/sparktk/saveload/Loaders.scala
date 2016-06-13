@@ -3,6 +3,7 @@ package org.trustedanalytics.sparktk.saveload
 import org.apache.spark.SparkContext
 import org.json4s.JsonAST.JValue
 import org.trustedanalytics.sparktk.frame.Frame
+import org.trustedanalytics.sparktk.models.classification.pca.PcaModel
 import org.trustedanalytics.sparktk.models.clustering.kmeans.KMeansModel
 
 object Loaders {
@@ -33,6 +34,7 @@ object Loaders {
    */
   private lazy val loaders: Map[String, LoaderType] = Map(
     Frame.formatId -> Frame.load,
-    KMeansModel.formatId -> KMeansModel.load
+    KMeansModel.formatId -> KMeansModel.load,
+    PcaModel.formatId -> PcaModel.load
   )
 }
