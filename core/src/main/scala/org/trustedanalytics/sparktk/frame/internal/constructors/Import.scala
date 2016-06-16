@@ -1,8 +1,10 @@
 package org.trustedanalytics.sparktk.frame.internal.constructors
 
+import org.apache.commons.lang.StringUtils
 import org.apache.spark.SparkContext
 import org.trustedanalytics.sparktk.frame.{ Schema, Frame }
 import org.trustedanalytics.sparktk.frame.internal.rdd.FrameRdd
+import org.apache.commons.lang.StringUtils
 
 object Import {
 
@@ -25,6 +27,7 @@ object Import {
                 header: Boolean = false,
                 inferSchema: Boolean = false,
                 schema: Option[Schema] = None): Frame = {
+
     // If a custom schema is provided there's no reason to infer the schema during the load
     val loadWithInferSchema = if (schema.isDefined) false else inferSchema
 
@@ -61,5 +64,47 @@ object Import {
     val sqlContext = new org.apache.spark.sql.SQLContext(sc)
     val df = sqlContext.read.parquet(path)
     FrameRdd.toFrameRdd(df)
+  }
+
+  /**
+   * Loads data from given jdbc table into frame
+   *
+   * @param connectionUrl : Jdbc connection url to connect to database
+   * @param tableName :Jdbc table name to import
+   * @return Frame with data from jdbc table
+   */
+  def importJdbc(sc: SparkContext, connectionUrl: String, tableName: String): Frame = {
+
+    require(StringUtils.isNotEmpty(connectionUrl), "connection url is required")
+    require(StringUtils.isNotEmpty(tableName), "table name is required")
+
+    // Load from jdbc table
+    import org.apache.spark.sql.SQLContext
+    val sqlContext = new SQLContext(sc)
+
+    val sqlDataframe = sqlContext.read.format("jdbc")
+      .option("url", connectionUrl)
+      .option("dbtable", tableName)
+      .load()
+
+    val frameRdd = FrameRdd.toFrameRdd(sqlDataframe)
+    new Frame(frameRdd, frameRdd.frameSchema)
+  }
+
+  /**
+   * Loads data from hive using given hive query
+   *
+   * @param hiveQuery hive query
+   * @return Frame with data based on hiveQL query
+   */
+  def importHive(sc: SparkContext, hiveQuery: String): Frame = {
+
+    require(StringUtils.isNotEmpty(hiveQuery), "hive query is required")
+
+    //Load data from hive using given hiveQL query
+    val sqlContext = new org.apache.spark.sql.hive.HiveContext(sc)
+    val sqlDataframe = sqlContext.sql(hiveQuery)
+    val frameRdd = FrameRdd.toFrameRdd(sqlDataframe)
+    new Frame(frameRdd, frameRdd.frameSchema)
   }
 }
