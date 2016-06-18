@@ -2,7 +2,7 @@ package org.trustedanalytics.sparktk.models.classification.pca
 
 import org.apache.commons.lang.StringUtils
 import org.apache.spark.SparkContext
-import org.apache.spark.mllib.linalg.{ Vector => MllibVector, Vectors => MllibVectors, Matrix => MllibMatrix, DenseVector }
+import org.apache.spark.mllib.linalg.{ Vector => MllibVector, Vectors => MllibVectors, Matrix => MllibMatrix, Matrices => MllibMatrices, DenseVector }
 import org.apache.spark.mllib.linalg.distributed.{ RowMatrix, IndexedRow, IndexedRowMatrix }
 import org.json4s.JsonAST.JValue
 import org.json4s._
@@ -57,7 +57,7 @@ object PcaModel extends TkSaveableObject {
     while (singularValues.size < train_k) {
       println(s"Adding a zero...")
       singularValues = new DenseVector(singularValues.toArray :+ 0.0)
-      println(s"now it's = ${singularValues}.toArray")
+      println(s"now it's = ${singularValues.toArray}")
     }
 
     //var rightSingularVectors = svd.V
@@ -71,20 +71,28 @@ object PcaModel extends TkSaveableObject {
   def load(sc: SparkContext, path: String, formatVersion: Int, tkMetadata: JValue): Any = {
     validateFormatVersion(formatVersion, 1)
     val json: PcaModelJson = SaveLoad.extractFromJValue[PcaModelJson](tkMetadata)
-    PcaModel(json.columns, json.meanCentered, json.k, json.columnMeans, json.singularValues, json.rightSingularVectors)
+    json.toPcaModel
   }
 
-  implicit def VectorToJValue(v: MllibVector) : JValue = { JString(v.toJson) }
-  implicit def JValueToVector(v: JValue) : MllibVector = { JString(v.toJson) }
 }
 
-
 case class PcaModelJson(columns: Seq[String],
-                              meanCentered: Boolean,
-                              k: Int,
-                              columnMeans: String,
-                              singularValues: String,
-                              rightSingularVectors: String) extends Serializable {)
+                        meanCentered: Boolean,
+                        k: Int,
+                        columnMeans: Array[Double],
+                        singularValues: Array[Double],
+                        rsvNumRows: Int,
+                        rsvNumCols: Int,
+                        rsvValues: Array[Double]) extends Serializable {
+
+  def toPcaModel: PcaModel = {
+    val meansVector: MllibVector = MllibVectors.dense(columnMeans)
+    val sv: MllibVector = MllibVectors.dense(singularValues)
+    val rsv: MllibMatrix = MllibMatrices.dense(rsvNumRows, rsvNumCols, rsvValues)
+    PcaModel(columns, meanCentered, k, meansVector, sv, rsv)
+  }
+}
+
 /**
  * @param columns sequence of observation columns of the data frame
  * @param meanCentered Indicator whether the columns were mean centered for training
@@ -106,7 +114,14 @@ case class PcaModel private[pca] (columns: Seq[String],
    */
   def save(sc: SparkContext, path: String): Unit = {
     val formatVersion: Int = 1
-    val jsonable = PcaModelJson(columns, meanCentered, k, columnMeans.toJson, singularValues.toJson, rightSingularVectors.toJson)
+    val jsonable = PcaModelJson(columns,
+      meanCentered,
+      k,
+      columnMeans.toArray,
+      singularValues.toArray,
+      rightSingularVectors.numRows,
+      rightSingularVectors.numCols,
+      rightSingularVectors.toArray)
     TkSaveLoad.saveTk(sc, path, PcaModel.formatId, formatVersion, jsonable)
   }
 
