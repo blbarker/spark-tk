@@ -1,21 +1,16 @@
 package org.trustedanalytics.sparktk.models.classification.pca
 
-import org.apache.commons.lang.StringUtils
+import org.json4s.JsonAST.JValue
+
 import org.apache.spark.SparkContext
 import org.apache.spark.mllib.linalg.{ Vector => MllibVector, Vectors => MllibVectors, Matrix => MllibMatrix, Matrices => MllibMatrices, DenseVector }
 import org.apache.spark.mllib.linalg.distributed.{ RowMatrix, IndexedRow, IndexedRowMatrix }
-import org.json4s.JsonAST.JValue
-import org.json4s._
-
-import org.trustedanalytics.sparktk.frame._
-import org.trustedanalytics.sparktk.frame.internal.RowWrapper
-import org.trustedanalytics.sparktk.frame.internal.rdd.FrameRdd
-import org.trustedanalytics.sparktk.saveload.{ TkSaveLoad, SaveLoad, TkSaveableObject }
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
 
-import scala.collection.mutable.ListBuffer
+import org.trustedanalytics.sparktk.frame._
+import org.trustedanalytics.sparktk.frame.internal.rdd.FrameRdd
+import org.trustedanalytics.sparktk.saveload.{ TkSaveLoad, SaveLoad, TkSaveableObject }
 
 object PcaModel extends TkSaveableObject {
 
@@ -33,39 +28,27 @@ object PcaModel extends TkSaveableObject {
             k: Option[Int] = None): PcaModel = {
     require(frame != null, "frame is required")
     require(columns != null, "data columns names cannot be null")
-    for (c <- columns) { require(StringUtils.isNotEmpty(c), "data columns names cannot be empty") }
+    frame.schema.requireColumnsAreVectorizable(columns)
     require(k != null)
     if (k.isDefined) {
       require(k.get <= columns.length, s"k=$k must be less than or equal to the number of observation columns=${columns.length}")
       require(k.get >= 1, s"number of Eigen values to use (k=$k) must be greater than equal to 1.")
     }
-
-    println(s"Number of partitions = ${frame.rdd.partitions.length}")
-
-    frame.schema.requireColumnsAreVectorizable(columns)
     val trainFrameRdd = new FrameRdd(frame.schema, frame.rdd)
 
     val train_k = k.getOrElse(columns.length)
 
     val rowMatrix = PrincipalComponentsFunctions.toRowMatrix(trainFrameRdd, columns, meanCentered)
     val svd = rowMatrix.computeSVD(train_k, computeU = false)
-
     val columnStatistics = trainFrameRdd.columnStatistics(columns)
 
     var singularValues = svd.s
-    println(s"singularValues.size=${singularValues.size}")
     while (singularValues.size < train_k) {
-      println(s"Adding a zero...")
+      // todo: add logging for this case, where the value count is less than k (could happen for toy data --i.e. it did)
       singularValues = new DenseVector(singularValues.toArray :+ 0.0)
-      println(s"now it's = ${singularValues.toArray}")
     }
 
-    //var rightSingularVectors = svd.V
-    //while(singularValues.size < train_k) {
-
     PcaModel(columns, meanCentered, train_k, columnStatistics.mean, singularValues, svd.V)
-
-    //model.data = principalComponentsObject.toJson.asJsObject
   }
 
   def load(sc: SparkContext, path: String, formatVersion: Int, tkMetadata: JValue): Any = {
@@ -73,27 +56,11 @@ object PcaModel extends TkSaveableObject {
     val json: PcaModelJson = SaveLoad.extractFromJValue[PcaModelJson](tkMetadata)
     json.toPcaModel
   }
-
-}
-
-case class PcaModelJson(columns: Seq[String],
-                        meanCentered: Boolean,
-                        k: Int,
-                        columnMeans: Array[Double],
-                        singularValues: Array[Double],
-                        rsvNumRows: Int,
-                        rsvNumCols: Int,
-                        rsvValues: Array[Double]) extends Serializable {
-
-  def toPcaModel: PcaModel = {
-    val meansVector: MllibVector = MllibVectors.dense(columnMeans)
-    val sv: MllibVector = MllibVectors.dense(singularValues)
-    val rsv: MllibMatrix = MllibMatrices.dense(rsvNumRows, rsvNumCols, rsvValues)
-    PcaModel(columns, meanCentered, k, meansVector, sv, rsv)
-  }
 }
 
 /**
+ * A PCA Model, holding all the important parameters
+ *
  * @param columns sequence of observation columns of the data frame
  * @param meanCentered Indicator whether the columns were mean centered for training
  * @param k Principal component count
@@ -109,6 +76,7 @@ case class PcaModel private[pca] (columns: Seq[String],
                                   rightSingularVectors: MllibMatrix) extends Serializable {
   /**
    * Saves this model to a file
+   *
    * @param sc active SparkContext
    * @param path save to path
    */
@@ -130,32 +98,8 @@ case class PcaModel private[pca] (columns: Seq[String],
   def singularValuesAsArray: Array[Double] = singularValues.toArray
 
   def rightSingularVectorsAsArray: Array[Double] = {
-    //    val reg = rightSingularVectors.toArray
-
-    println(s"Regular: ${rightSingularVectors.toArray.mkString(", ")}")
-    //println(s"Regular: $rightSingularVectors")
-    //
-    //    val trans = rightSingularVectors.transpose.toArray
-    //println(s"Transpose: ${rightSingularVectors.transpose}")
-    println(s"Transpose: ${rightSingularVectors.transpose.toArray.mkString(", ")}")
-    //
-    //    reg
     rightSingularVectors.transpose.toArray
   }
-
-  /**
-   *
-   * """Handle to the model to be used.""") model: ModelReference,
-   * c("""Frame whose principal components are to be computed.""") frame: FrameReference,
-   * //                                          @ArgDoc("""Option to mean center the columns. Default is true""") meanCentered: Boolean = true,
-   * //                                          @ArgDoc("""Indicator for whether the t-square index is to be computed. Default is false.""") tSquaredIndex: Boolean = false,
-   * //                                          @ArgDoc("""List of observation column name(s) to be used for prediction. Default is the list of column name(s) used to train the model.""") observationColumns: Option[List[String]] = None,
-   * //                                          @ArgDoc("""The number of principal components to be predicted. 'c' cannot be greater than the count used to train the model. Default is the count used to train the model.""") c: Option[Int] = None,
-   * //                                          @ArgDoc("""The name of the output frame generated by predict.""") name: Option[String] = None) {
-   * require(model != null, "model is required")
-   * require(frame != null, "frame is required")
-   * }
-   */
 
   /**
    *
@@ -196,115 +140,10 @@ case class PcaModel private[pca] (columns: Seq[String],
     val componentFrame = new FrameRdd(FrameSchema(componentColumns), componentRows)
     val resultFrameRdd = frameRdd.zipFrameRdd(componentFrame)
     frame.init(resultFrameRdd.rdd, resultFrameRdd.schema)
-
-    //    // Predict principal components and optional T-squared index
-    //    val resultFrame = PrincipalComponentsFunctions.predictPrincipalComponents(frame.rdd,
-    //      principalComponentData, predictColumns, c, arguments.meanCentered, arguments.tSquaredIndex)
-
-    //    val predictMapper: RowWrapper => Row = row => {
-    //      val point = vectorMaker(row)
-    //      val prediction = sparkModel.predict(point)
-    //      Row.apply(prediction)
-    //    }
-    //    val predictSchema = predictColumns.map(columnName => frame.schema.getNewColumnName(columnName).uniq.cheese(columnName))
-    //
-    //    frame.addColumns(predictMapper, Seq(Column("cluster", DataTypes.int32)))
   }
-  //  def rightSingularVectorsAsArray: Array[Double] = {
-  //    //    val reg = rightSingularVectors.toArray
-  //
-  //    rightSingularVectors.transpose.toArray
-  //    println(s"Regular: ${rightSingularVectors.toArray.mkString(", ")}")
-  //    //println(s"Regular: $rightSingularVectors")
-  //    //
-  //    //    val trans = rightSingularVectors.transpose.toArray
-  //    //println(s"Transpose: ${rightSingularVectors.transpose}")
-  //    println(s"Transpose: ${rightSingularVectors.transpose.toArray.mkString(", ")}")
-  //    //
-  //    //    reg
-  //    rightSingularVectors.transpose.toArray
-  //  }
-  //  def toIndexedRowMatrix(frameRdd: FrameRdd, columns: Seq[String], meanCentered: Boolean): IndexedRowMatrix = {
-  //    val vectorRdd = toVectorRdd(frameRdd, columns, meanCentered)
-  //    new IndexedRowMatrix(vectorRdd.zipWithIndex().map { case (vector, index) => IndexedRow(index, vector) })
-  //  }
 }
-//class PcaModelJsonSerializer extends Serializer[PcaModel] {
-//
-//  private val PcaModelClass = classOf[PcaModel]
-//
-//  def deserialize(implicit format: Formats): PartialFunction[(TypeInfo, JValue), PcaModel] = {
-//    case (TypeInfo(PcaModelClass, _), json) => json match {
-//      case JObject(JField("id", JInt(id)) :: _) =>
-//        MyClass(id)
-//      case x => throw new MappingException("Can't convert " + x + " to MyClass")
-//    }
-//  }
-//
-//  def serialize(implicit formats: Formats): PartialFunction[Any, JValue] = {
-//    case x: PcaModel =>
-//      import JsonDSL._
-//      ("columsid" -> x.id) ~ ("blah" -> x.blah)
-//  }
-//}
-//}
-
-//package org.trustedanalytics.atk.engine.model.plugins.dimensionalityreduction
 
 object PrincipalComponentsFunctions extends Serializable {
-  /**
-   * //   * Validate the arguments to the plugin
-   * //   * @param arguments Arguments passed to the predict plugin
-   * //   * @param principalComponentData Trained PrincipalComponents model data
-   * //
-   */
-  //  def validateInputArguments(arguments: PrincipalComponentsPredictArgs, principalComponentData: PrincipalComponentsData): Unit = {
-  //    if (arguments.meanCentered) {
-  //      require(principalComponentData.meanCentered == arguments.meanCentered, "Cannot mean center the predict frame if the train frame was not mean centered.")
-  //    }
-  //
-  //    if (arguments.observationColumns.isDefined) {
-  //      require(principalComponentData.observationColumns.length == arguments.observationColumns.get.length, "Number of columns for train and predict should be same")
-  //    }
-  //
-  //    if (arguments.c.isDefined) {
-  //      require(principalComponentData.k >= arguments.c.get, "Number of components must be at most the number of components trained on")
-  //    }
-  //  }
-
-  //  /**
-  //   * Predict principal components
-  //   * @param frameRdd Input frame
-  //   * @param principalComponentData Principal components model data
-  //   * @param predictColumns List of columns names for prediction
-  //   * @param c Number of principal components
-  //   * @param meanCentered If true, mean center the input data
-  //   * @param computeTsquaredIndex If true, compute t-squared index
-  //   * @return Frame with predicted principal components
-  //   */
-  //  def predictPrincipalComponents(frameRdd: FrameRdd,
-  //                                 principalComponentData: PrincipalComponentsData,
-  //                                 predictColumns: List[String],
-  //                                 c: Int,
-  //                                 meanCentered: Boolean,
-  //                                 computeTsquaredIndex: Boolean): FrameRdd = {
-  //    val indexedRowMatrix = toIndexedRowMatrix(frameRdd, predictColumns, meanCentered)
-  //    val principalComponents = computePrincipalComponents(principalComponentData, c, indexedRowMatrix)
-  //
-  //    val pcaColumns = for (i <- 1 to c) yield Column("p_" + i.toString, DataTypes.float64)
-  //    val (componentColumns, components) = computeTsquaredIndex match {
-  //      case true => {
-  //        val tSquareMatrix = computeTSquaredIndex(principalComponents, principalComponentData.singularValues, c)
-  //        val tSquareColumn = Column("t_squared_index", DataTypes.float64)
-  //        (pcaColumns :+ tSquareColumn, tSquareMatrix)
-  //      }
-  //      case false => (pcaColumns, principalComponents)
-  //    }
-  //
-  //    val componentRows = components.rows.map(row => Row.fromSeq(row.vector.toArray.toSeq))
-  //    val componentFrame = new FrameRdd(FrameSchema(componentColumns.toList), componentRows)
-  //    frameRdd.zipFrameRdd(componentFrame)
-  //  }
 
   /**
    * Compute principal components using trained model
@@ -386,3 +225,31 @@ object PrincipalComponentsFunctions extends Serializable {
   }
 }
 
+/**
+ * PcaModel's important content represented in a case class that is easily JSON serializable
+ *
+ * @param columns sequence of observation columns of the data frame
+ * @param meanCentered Indicator whether the columns were mean centered for training
+ * @param k Principal component count
+ * @param columnMeans Means of the columns
+ * @param singularValues Singular values of the specified columns in the input frame
+ * @param rsvNumRows number of rows in the right singular vectors matrix
+ * @param rsvNumCols number of cols in the right singular vectors matrix
+ * @param rsvValues Right singular vectors of the specified columns in the input frame
+ */
+case class PcaModelJson(columns: Seq[String],
+                        meanCentered: Boolean,
+                        k: Int,
+                        columnMeans: Array[Double],
+                        singularValues: Array[Double],
+                        rsvNumRows: Int,
+                        rsvNumCols: Int,
+                        rsvValues: Array[Double]) extends Serializable {
+
+  def toPcaModel: PcaModel = {
+    val meansVector: MllibVector = MllibVectors.dense(columnMeans)
+    val sv: MllibVector = MllibVectors.dense(singularValues)
+    val rsv: MllibMatrix = MllibMatrices.dense(rsvNumRows, rsvNumCols, rsvValues)
+    PcaModel(columns, meanCentered, k, meansVector, sv, rsv)
+  }
+}

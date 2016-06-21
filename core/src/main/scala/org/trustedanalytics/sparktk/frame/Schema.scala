@@ -4,6 +4,7 @@ import java.util.{ ArrayList => JArrayList }
 
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Row
+import org.apache.commons.lang.{ StringUtils => CommonsStringUtils }
 import org.trustedanalytics.sparktk.frame.DataTypes.DataType
 import org.trustedanalytics.sparktk.frame.internal.rdd.FrameRdd
 
@@ -434,6 +435,7 @@ trait Schema {
    */
   def requireColumnsAreVectorizable(columnNames: Seq[String]): Unit = {
     require(columnNames.nonEmpty, "single vector column, or one or more numeric columns required")
+    columnNames.foreach { c => require(CommonsStringUtils.isNotEmpty(c), "data columns names cannot be empty") }
     if (columnNames.size > 1) {
       requireColumnsOfNumericPrimitives(columnNames)
     }
