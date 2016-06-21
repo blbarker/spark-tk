@@ -28,7 +28,7 @@ def train(frame, columns, mean_centered=True, k=None):
 
 def get_scala_obj(tc):
     """Gets reference to the scala object"""
-    return tc.sc._jvm.org.trustedanalytics.sparktk.models.classification.pca.PcaModel
+    return tc.sc._jvm.org.trustedanalytics.sparktk.models.dimreduction.pca.PcaModel
 
 
 class PcaModel(PropertiesObject):
@@ -57,7 +57,7 @@ class PcaModel(PropertiesObject):
         [3]  3.7  1.0  0.5  1.2  0.6  0.3
         [4]  1.5  1.2  0.5  1.4  0.6  0.4
 
-        >>> model = tc.models.classification.pca.train(frame, ['1','2','3','4','5','6'], mean_centered=True, k=4)
+        >>> model = tc.models.dimreduction.pca.train(frame, ['1','2','3','4','5','6'], mean_centered=True, k=4)
 
         >>> model.columns
         [u'1', u'2', u'3', u'4', u'5', u'6']

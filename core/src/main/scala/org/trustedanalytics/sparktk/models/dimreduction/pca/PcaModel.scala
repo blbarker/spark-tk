@@ -1,4 +1,4 @@
-package org.trustedanalytics.sparktk.models.classification.pca
+package org.trustedanalytics.sparktk.models.dimreduction.pca
 
 import org.json4s.JsonAST.JValue
 
