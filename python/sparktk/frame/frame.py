@@ -227,6 +227,9 @@ class Frame(object):
             return schema_to_python(self._tc.sc, self._frame.schema())  # need ()'s on schema because it's a def in scala
         return self._frame.schema
 
+    def freakify(self):
+        self.rename_columns(["the_freaking_" + name for name in self.column_names])
+
     @property
     def column_names(self):
         """
