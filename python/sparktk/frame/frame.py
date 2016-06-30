@@ -227,8 +227,6 @@ class Frame(object):
             return schema_to_python(self._tc.sc, self._frame.schema())  # need ()'s on schema because it's a def in scala
         return self._frame.schema
 
-    def freakify(self):
-        self.rename_columns(["the_freaking_" + name for name in self.column_names])
 
     @property
     def column_names(self):
@@ -307,6 +305,7 @@ class Frame(object):
     from sparktk.frame.ops.export_data import export_to_jdbc, export_to_json, export_to_hbase, export_to_hive
     from sparktk.frame.ops.filter import filter
     from sparktk.frame.ops.flatten_columns import flatten_columns
+    from sparktk.frame.ops.freakify import freakify
     from sparktk.frame.ops.histogram import histogram
     from sparktk.frame.ops.inspect import inspect
     from sparktk.frame.ops.join_inner import join_inner
