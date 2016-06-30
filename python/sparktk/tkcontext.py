@@ -7,6 +7,9 @@ from pyspark import SparkContext
 import logging
 logger = logging.getLogger('sparktk')
 
+def freakify(s):
+    return "the_freaking_" + s
+
 class TkContext(object):
     """TK Context - grounding object for the sparktk library"""
 
@@ -20,6 +23,9 @@ class TkContext(object):
         self._jutils = JUtils(self._sc)
         self._scala_sc = self._jutils.get_scala_sc()
         loggers.set_spark(self._sc, "off")  # todo: undo this/move to config, I just want it outta my face most of the time
+
+    def freakify(self, s):
+        freakify(s)
 
     @property
     def sc(self):
