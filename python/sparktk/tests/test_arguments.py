@@ -120,13 +120,14 @@ class TestAffirmType(unittest.TestCase):
 
     def test_list_of_float_none_error(self):
         try:
-           affirm_type.list_of_float(None, "a")
+            affirm_type.list_of_float(None, "a")
         except ValueError as e:
             msg = str(e)
             expected = "Found a = None.  Expected a non-None value."
             self.assertTrue(msg == expected, "expected error message should have ended with '%s', message =%s" % (expected, msg))
         else:
             self.fail("A ValueError should have been raised")
+
 
 class TestRequireType(unittest.TestCase):
 
